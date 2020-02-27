@@ -1,8 +1,8 @@
 from mlxtend.data import loadlocal_mnist
 import numpy as np
 
-def sigmoid(scores):
-    return 1 / (1 + np.exp(-scores))
+def F(scores):
+    return np.exp(scores) / (1 + np.exp(scores))
 
 
 
@@ -30,7 +30,7 @@ class LogisticRegressionModel:
         prev_grad = None
         for step in range(num_steps):
             scores = np.dot(features, self.weights)
-            predictions = sigmoid(scores)
+            predictions = F(scores)
 
             # Update weights with gradient
             output_error_signal = target - predictions
@@ -46,7 +46,7 @@ class LogisticRegressionModel:
                 lr /= 2
 
             # Print log-likelihood every so often
-            if (step + 1) % 10 == 0:
+            if (step + 1) % 1 == 0:
                 if dev_feat is not None and dev_tgt is not None:
                     pred = self.prediction(dev_feat)
                     pred = np.ceil(pred - 0.5)
@@ -63,7 +63,7 @@ class LogisticRegressionModel:
 
     def prediction(self, features):
         scores = np.dot(features, self.weights)
-        predictions = sigmoid(scores)
+        predictions = F(scores)
         return predictions
 
 
@@ -101,7 +101,7 @@ dev_X, dev_y = X[10000:], y[10000:]
 
 model = LogisticRegressionModel(tr_X.shape[1])
 model.train(tr_X, tr_y,
-                 num_steps=100, learning_rate=5e-5, dev_feat=dev_X, dev_tgt=dev_y)
+                 num_steps=20, learning_rate=5e-5, dev_feat=dev_X, dev_tgt=dev_y)
 pred = np.ceil( model.prediction(tr_X) - 0.5)
 print('Train Acc. {:.4f}'.format(eval_pred(pred, tr_y)))
 pred = np.ceil( model.prediction(dev_X) - 0.5)
