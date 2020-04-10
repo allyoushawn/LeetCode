@@ -8,13 +8,12 @@ def bisect_left(nums, n):
     while rptr > lptr:
         mid = (lptr + rptr) // 2
         if nums[mid] >= n:
-            rptr = mid - 1
+            rptr = mid
         else:
             lptr = mid + 1
-    if nums[lptr] < n:
-        return lptr + 1
-    else:
-        return lptr
+    if n > nums[rptr]:
+        return rptr + 1
+    return rptr
 
 l1 = [2, 2,2,2, 8, 10, 21, 13, 72]
 n = 100
