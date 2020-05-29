@@ -61,8 +61,14 @@ if torch.cuda.is_available():
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
+model_type = 'LSTM'
+if model_type == 'LSTM':
+    tokens_per_batch = 5000
+else:
+    tokens_per_batch = 5000
 
-train_iter = MyIterator(train, batch_size=5000, device=device,
+
+train_iter = MyIterator(train, batch_size=tokens_per_batch, device=device,
                         repeat=False, sort_key= lambda x:
                         (len(x.English), len(x.French)),
                         batch_size_fn=batch_size_fn, train=True,
@@ -78,7 +84,12 @@ nlayers = 2 # the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
 nhead = 2 # the number of heads in the multiheadattention models
 dropout = 0.2 # the dropout value
 from transformer import TransformerModel
-model = TransformerModel(src_ntokens, tgt_ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
+from lstm_seq2seq import Seq2Seq
+
+if model_type == 'LSTM':
+    model = Seq2Seq(src_ntokens, tgt_ntokens, emsize, nhid, device).to(device)
+else:
+    model = TransformerModel(src_ntokens, tgt_ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
 
 criterion = torch.nn.CrossEntropyLoss(ignore_index=1)
 optimizer = torch.optim.Adam(model.parameters())
@@ -86,26 +97,33 @@ model.train()
 
 log_interval = 200
 step = 0
+for epoch in range(10):
+    for batch in iter(train_iter):
+        optimizer.zero_grad()
+        # 1. is the padding index
+        src = batch.English.to(device)
+        tgt = batch.French.to(device)
+        tgt_for_inp = tgt[:-1]
+        tgt_for_loss = tgt[1:]
 
-for batch in iter(train_iter):
-    optimizer.zero_grad()
-    # 1. is the padding index
-    src_mask = (batch.English == 1.).permute(1, 0).to(device)
-    src = batch.English.to(device)
-    tgt = batch.French.to(device)
+        if model_type == 'Transformer':
 
-    tgt_for_inp = tgt[:-1]
-    tgt_for_loss = tgt[1:]
-    tgt_mask = (tgt_for_inp == 1.).permute(1, 0).to(device)
+            src_mask = (batch.English == 1.).permute(1, 0).to(device)
+            tgt_mask = (tgt_for_inp == 1.).permute(1, 0).to(device)
 
-    logits = model.train_step(src, src_mask, tgt_for_inp, tgt_mask)
-    loss = criterion(logits.view(-1, tgt_ntokens), tgt_for_loss.view(-1))
+            logits = model.train_step(src, src_mask, tgt_for_inp, tgt_mask)
+            loss = criterion(logits.view(-1, tgt_ntokens), tgt_for_loss.view(-1))
+        else:
+            src_mask = (batch.English == 1.).permute(1, 0).to(device)
+            src_lengths = src.shape[0] - src_mask.int().sum(axis=1)
+            loss = model.train_step(src, src_lengths, tgt_for_inp, tgt_for_loss)
 
-    loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-    optimizer.step()
-    step += 1
 
-    if step % log_interval == 0:
-        print(f'Step {step}: loss: {loss.item()}')
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        optimizer.step()
+        step += 1
+
+        if step % log_interval == 0:
+            print(f'Step {step}: loss: {loss.item()}')
 
