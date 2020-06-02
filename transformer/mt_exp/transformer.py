@@ -56,6 +56,45 @@ class TransformerModel(nn.Module):
         logits = self.decoder_out(dec_out)
         return logits
 
+    def generate(self, src, src_key_pad_mask):
+        # src: [T, B]
+        # src_key_pad_mask: [B, T]
+        batch_size = src.shape[1]
+        src = self.encoder_embed(src) * math.sqrt(self.ninp)
+        src = self.pos_encoder(src)
+        enc_output = self.transformer_encoder(src, src_key_padding_mask=src_key_pad_mask)
+
+        device = src.device
+        max_len = 80
+        # <sos> is 2 and <eos> is 3
+        eos = 3
+        sos = 2
+        dec_inp = sos * torch.ones((max_len, batch_size)).long().to(device)
+        dec_inp_mask = self._generate_square_subsequent_mask(len(dec_inp)).to(device)
+
+        output = eos * torch.ones((max_len, batch_size)).long().to(device)
+        stop = torch.zeros((batch_size)).bool().to(device)
+
+        for t in range(max_len):
+            x = dec_inp
+            x = self.decoder_embed(x) * math.sqrt(self.ninp)
+            x = self.pos_encoder(x)
+            dec_out = self.transformer_decoder(x, enc_output, tgt_mask=dec_inp_mask, memory_key_padding_mask=src_key_pad_mask)
+            _, topi = dec_out.topk(1)
+            topi_t = topi[t].squeeze().long()
+            output[t] = topi_t
+
+            # Stop if all sentences reache eos
+            stop_t = (topi_t == eos)
+            stop = stop | stop_t
+            if torch.all(stop):
+                break
+
+            if t == max_len - 1:
+                break
+            dec_inp[t+1] = topi_t.detach()
+        return output
+
 class PositionalEncoding(nn.Module):
 
     def __init__(self, d_model, dropout=0.1, max_len=5000):

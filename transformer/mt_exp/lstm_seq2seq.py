@@ -68,7 +68,8 @@ class AttentionDecoderRNN(nn.Module):
         attn_weights = F.softmax(
             self.attn(torch.cat((emb[0], hidden[0][-1]), 1)), dim=1)
 
-        T = encoder_outputs.shape[0]
+        T = min(encoder_outputs.shape[0], self.max_length)
+        encoder_outputs = encoder_outputs[:T, :, :]
         attn_weights = attn_weights[:, :T] # [B, T]
 
         # attn_applied = [B, 1, T] (bmm) [B, T, D] = [B, 1, D]
@@ -100,6 +101,37 @@ class Seq2Seq(nn.Module):
             dec_output, hidden = self.decoder(inp, hidden, enc_out)
             loss += self.criterion(dec_output, tgt_for_loss[t])
         return loss
+
+    def generate(self, src, src_lengths):
+        batch_size = src.shape[1]
+        device = src.device
+        enc_out, hidden = self.encoder(src, src_lengths)
+        max_len = 80
+
+        eos = 3
+        sos = 2
+        dec_inp = sos * torch.ones((batch_size)).long().to(device)
+
+        output = eos * torch.ones((max_len, batch_size)).long().to(device)
+        stop = torch.zeros((batch_size)).bool().to(device)
+
+        x = dec_inp
+        for t in range(max_len):
+            dec_out, hidden = self.decoder(x, hidden, enc_out)
+            _, topi = dec_out.topk(1)
+            topi_t = topi.squeeze().long()
+            output[t] = topi_t
+
+            # Stop if all sentences reache eos
+            stop_t = (topi_t == eos)
+            stop = stop | stop_t
+            if torch.all(stop):
+                break
+
+            if t == max_len - 1:
+                break
+            x = topi_t.detach()
+        return output
 
 
 

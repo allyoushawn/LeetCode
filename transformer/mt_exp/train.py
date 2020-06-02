@@ -5,6 +5,8 @@ from torchtext import data
 # The script is based on https://towardsdatascience.com/how-to-use-torchtext-for-neural-machine-translation-plus-hack-to-make-it-5x-faster-77f3884d95
 
 
+from nltk.translate.bleu_score import sentence_bleu
+
 en = spacy.load('en_core_web_sm')
 fr = spacy.load('fr_core_news_sm')
 
@@ -61,11 +63,7 @@ if torch.cuda.is_available():
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
-model_type = 'LSTM'
-if model_type == 'LSTM':
-    tokens_per_batch = 5000
-else:
-    tokens_per_batch = 5000
+tokens_per_batch = 5000
 
 
 train_iter = MyIterator(train, batch_size=tokens_per_batch, device=device,
@@ -73,7 +71,6 @@ train_iter = MyIterator(train, batch_size=tokens_per_batch, device=device,
                         (len(x.English), len(x.French)),
                         batch_size_fn=batch_size_fn, train=True,
                         shuffle=True)
-
 
 
 src_ntokens = len(EN_TEXT.vocab.stoi) # the size of vocabulary
@@ -86,10 +83,16 @@ dropout = 0.2 # the dropout value
 from transformer import TransformerModel
 from lstm_seq2seq import Seq2Seq
 
+model_type = 'LSTM' # LSTM or Transformer
 if model_type == 'LSTM':
     model = Seq2Seq(src_ntokens, tgt_ntokens, emsize, nhid, device).to(device)
 else:
     model = TransformerModel(src_ntokens, tgt_ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
+
+import numpy as np
+model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+print('# parameters: {:e}'.format(params))
 
 criterion = torch.nn.CrossEntropyLoss(ignore_index=1)
 optimizer = torch.optim.Adam(model.parameters())
@@ -97,8 +100,8 @@ model.train()
 
 log_interval = 200
 step = 0
-for epoch in range(10):
-    for batch in iter(train_iter):
+for batch in iter(train_iter):
+    while True:
         optimizer.zero_grad()
         # 1. is the padding index
         src = batch.English.to(device)
@@ -110,6 +113,7 @@ for epoch in range(10):
 
             src_mask = (batch.English == 1.).permute(1, 0).to(device)
             tgt_mask = (tgt_for_inp == 1.).permute(1, 0).to(device)
+
 
             logits = model.train_step(src, src_mask, tgt_for_inp, tgt_mask)
             loss = criterion(logits.view(-1, tgt_ntokens), tgt_for_loss.view(-1))
@@ -123,7 +127,44 @@ for epoch in range(10):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
         step += 1
+        if step > 100000:
+            break
 
         if step % log_interval == 0:
             print(f'Step {step}: loss: {loss.item()}')
+
+
+            model.eval()
+            if model_type == 'Transformer':
+                src_mask = (batch.English == 1.).permute(1, 0).to(device)
+                output = model.generate(src, src_mask)
+            else:
+                src_mask = (batch.English == 1.).permute(1, 0).to(device)
+                src_lengths = src.shape[0] - src_mask.int().sum(axis=1)
+                output = model.generate(src, src_lengths)
+
+            output = output.permute(1, 0) # [B, T]
+            output = output.cpu().detach().numpy()
+            B, T = output.shape
+            ref = tgt.permute(1, 0).detach().cpu().numpy()
+            scores = []
+            for i in range(B):
+                sent = []
+                for t in range(T):
+                    if FR_TEXT.vocab.itos[output[i][t]] != '<eos>':
+                        sent.append(FR_TEXT.vocab.itos[output[i][t]])
+                    else:
+                        break
+                sent_ref = []
+                for t in range(len(ref[i])):
+                    if FR_TEXT.vocab.itos[ref[i][t]] != '<pad>':
+                        sent_ref.append(FR_TEXT.vocab.itos[ref[i][t]])
+                    else:
+                        break
+                # Remove <sos> and <eos>
+                sent_ref = sent_ref[1:-1]
+                scores.append(sentence_bleu([sent_ref], sent))
+            print(' '.join(sent))
+            print('Average BLEU: {:.4f}'.format(sum(scores) / len(scores)))
+            model.train()
 
