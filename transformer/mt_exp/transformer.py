@@ -80,7 +80,8 @@ class TransformerModel(nn.Module):
             x = self.decoder_embed(x) * math.sqrt(self.ninp)
             x = self.pos_encoder(x)
             dec_out = self.transformer_decoder(x, enc_output, tgt_mask=dec_inp_mask, memory_key_padding_mask=src_key_pad_mask)
-            _, topi = dec_out.topk(1)
+            logits = self.decoder_out(dec_out)
+            _, topi = logits.topk(1)
             topi_t = topi[t].squeeze().long()
             output[t] = topi_t
 

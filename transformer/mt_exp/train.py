@@ -63,7 +63,7 @@ if torch.cuda.is_available():
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
-tokens_per_batch = 5000
+tokens_per_batch = 3000
 
 
 train_iter = MyIterator(train, batch_size=tokens_per_batch, device=device,
@@ -71,6 +71,7 @@ train_iter = MyIterator(train, batch_size=tokens_per_batch, device=device,
                         (len(x.English), len(x.French)),
                         batch_size_fn=batch_size_fn, train=True,
                         shuffle=True)
+
 
 
 src_ntokens = len(EN_TEXT.vocab.stoi) # the size of vocabulary
@@ -100,8 +101,8 @@ model.train()
 
 log_interval = 200
 step = 0
-for batch in iter(train_iter):
-    while True:
+while step < 100000:
+    for batch in iter(train_iter):
         optimizer.zero_grad()
         # 1. is the padding index
         src = batch.English.to(device)
@@ -133,11 +134,14 @@ for batch in iter(train_iter):
         if step % log_interval == 0:
             print(f'Step {step}: loss: {loss.item()}')
 
-
             model.eval()
             if model_type == 'Transformer':
                 src_mask = (batch.English == 1.).permute(1, 0).to(device)
-                output = model.generate(src, src_mask)
+                #output = model.generate(src, src_mask)
+                output = []
+                for i in range(src.shape[1]):
+                    output.append(model.generate(src[:, i:i+1], src_mask[i:i+1]))
+                output = torch.stack(output).squeeze().permute(1, 0)
             else:
                 src_mask = (batch.English == 1.).permute(1, 0).to(device)
                 src_lengths = src.shape[0] - src_mask.int().sum(axis=1)
