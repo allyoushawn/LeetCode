@@ -20,7 +20,7 @@ class EncoderRNN(nn.Module):
         x, hidden = self.rnn(x)
         x, _ = torch.nn.utils.rnn.pad_packed_sequence(x)
 
-        return x.squeeze(), hidden
+        return x, hidden
 
 
 class DecoderRNN(nn.Module):
@@ -74,7 +74,7 @@ class AttentionDecoderRNN(nn.Module):
 
         # attn_applied = [B, 1, T] (bmm) [B, T, D] = [B, 1, D]
         attn_applied = torch.bmm(attn_weights.unsqueeze(1), encoder_outputs.permute(1, 0, 2))
-        x = torch.cat((emb[0], attn_applied.squeeze()), 1)
+        x = torch.cat((emb[0], attn_applied.squeeze(1)), 1)
         x = self.attn_combine(x)
         output, hidden = self.rnn(x.unsqueeze(0), hidden)
         output = output.squeeze(0)

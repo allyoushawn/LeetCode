@@ -20,7 +20,7 @@ FR_TEXT = Field(tokenize=tokenize_fr, init_token = '<sos>', eos_token = '<eos>')
 
 # associate the text in the 'English' column with the EN_TEXT field, # and 'French' with FR_TEXT
 data_fields = [('English', EN_TEXT), ('French', FR_TEXT)]
-train,val = TabularDataset.splits(path='data', train='train.csv', validation='val.csv', format='csv', fields=data_fields)
+train,val = TabularDataset.splits(path='data_small', train='train.csv', validation='val.csv', format='csv', fields=data_fields)
 
 FR_TEXT.build_vocab(train, val)
 EN_TEXT.build_vocab(train, val)
@@ -63,7 +63,7 @@ if torch.cuda.is_available():
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
-tokens_per_batch = 3000
+tokens_per_batch = 2000
 
 
 train_iter = MyIterator(train, batch_size=tokens_per_batch, device=device,
