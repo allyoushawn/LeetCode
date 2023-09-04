@@ -1,3 +1,3 @@
 # ML Code
 TODO:
-Graph Convolutional Neuralwork.
+Graph Convolutional Neural Network.
